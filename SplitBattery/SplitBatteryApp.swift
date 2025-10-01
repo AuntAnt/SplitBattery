@@ -9,9 +9,15 @@ import SwiftUI
 
 @main
 struct SplitBatteryApp: App {
+    
+    @State
+    private var viewModel = DevicesViewModel()
+    
     var body: some Scene {
-        WindowGroup {
+        MenuBarExtra(viewModel.batteryLevel) {
             ContentView()
+                .environment(viewModel)
         }
+        .menuBarExtraStyle(.menu)
     }
 }

@@ -8,14 +8,50 @@
 import SwiftUI
 
 struct ContentView: View {
+    
+    @Environment(DevicesViewModel.self)
+    private var viewModel
+    
     var body: some View {
         VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+            Section {
+                ForEach(viewModel.connectedDevices, id: \.self) { device in
+                    Button(
+                        action: {
+                            viewModel.selectDevice(device)
+                        },
+                        label: {
+                            Text(device.name ?? "Unknown")
+                        }
+                    )
+                }
+            }
+            
+            Section {
+                Button(
+                    action: {
+                        viewModel.getConnectedDevices()
+                    },
+                    label: {
+                        Text("Refresh device list")
+                    }
+                )
+            }
+            
+            Section {
+                Button(
+                    action: {
+                        NSApplication.shared.terminate(nil)
+                    },
+                    label: {
+                        Text("Quit")
+                    }
+                )
+            }
         }
-        .padding()
+        .onAppear {
+            viewModel.getConnectedDevices()
+        }
     }
 }
 
