@@ -33,7 +33,7 @@ struct ContentView: View {
                         viewModel.getConnectedDevices()
                     },
                     label: {
-                        Text("Refresh device list")
+                        Text("Refresh devices list")
                     }
                 )
             }

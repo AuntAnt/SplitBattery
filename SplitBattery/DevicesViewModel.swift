@@ -7,46 +7,31 @@
 
 import CoreBluetooth
 
-enum SplitPart {
-    case left
-    case right
-}
-
-struct Part: Hashable {
-    let id: String
-    let type: SplitPart
-}
-
 @Observable
 final class DevicesViewModel: NSObject {
     
     var connectedDevices: [CBPeripheral] = []
     var batteryLevel: String {
         get {
-            // icons
-            // battery.0percent
-            // battery.25percent
-            // battery.50percent
-            // battery.75percent
-            // battery.100percent
-            
             if peripheral == nil {
                 return "Select device"
             }
             
-            if splitPartsLevels.count == 1, let onlyOne = splitPartsLevels.getFirst(part: .left) {
-                return "\(onlyOne)%"
-            } else if splitPartsLevels.count == 2,
-                      let left = splitPartsLevels.getFirst(part: .left),
-                      let right = splitPartsLevels.getFirst(part: .right) {
+            guard let device else {
+                return "Waiting..."
+            }
+            
+            if let left = device.leftPart.level, let right = device.rightPart?.level {
                 return "L: \(left)% | R: \(right)%"
+            } else if let left = device.leftPart.level {
+                return "\(left)%"
             } else {
                 return "Disconnected"
             }
         }
     }
     
-    private var splitPartsLevels: [Part: Int] = [:]
+    var device: Device?
     
     private let batteryServiceCBUUID = CBUUID(string: "0x180F")
     private let batteryLevelCharacteristicCBUUID = CBUUID(string: "0x2A19")
@@ -65,10 +50,14 @@ final class DevicesViewModel: NSObject {
     }
     
     func selectDevice(_ peripheral: CBPeripheral) {
-        self.splitPartsLevels = [:]
+        self.device = nil
         
         self.peripheral = peripheral
         self.peripheral?.delegate = self
+        
+        if centralManager.isScanning {
+            centralManager.stopScan()
+        }
         centralManager.connect(peripheral)
     }
 }
@@ -78,9 +67,10 @@ final class DevicesViewModel: NSObject {
 extension DevicesViewModel: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         switch central.state {
-        case .poweredOff:
-            // TODO: make it user friendly
-            assertionFailure("Bluetooth is turned off")
+        case .poweredOn:
+            if let peripheral {
+                central.connect(peripheral)
+            }
         default:
             return
         }
@@ -91,7 +81,19 @@ extension DevicesViewModel: CBCentralManagerDelegate {
     }
     
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: (any Error)?) {
-        splitPartsLevels = [:]
+        device = nil
+        
+        // when device is disconnected kick scanning for it,
+        // if it is gone into standby mode, wait for to wake up
+        central.scanForPeripherals(withServices: [batteryServiceCBUUID])
+    }
+    
+    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
+        // if disconnected device found again, automatically connecting to it and stop scanning
+        if peripheral == self.peripheral {
+            central.stopScan()
+            central.connect(peripheral)
+        }
     }
 }
 
@@ -108,13 +110,12 @@ extension DevicesViewModel: CBPeripheralDelegate {
         
         if services.count == 1 {
             let part = Part(id: "\(uuid)-\(services.first!.hash)", type: .left)
-            splitPartsLevels[part] = 0
+            self.device = Device(leftPart: part, rightPart: nil)
         } else if services.count == 2 {
             let left = Part(id: "\(uuid)-\(services.first!.hash)", type: .left)
             let right = Part(id: "\(uuid)-\(services.last!.hash)", type: .right)
             
-            splitPartsLevels[left] = 0
-            splitPartsLevels[right] = 0
+            self.device = Device(leftPart: left, rightPart: right)
         } else {
             assertionFailure("Found \(services.count) services, it is not handled yet")
         }
@@ -156,11 +157,11 @@ extension DevicesViewModel: CBPeripheralDelegate {
                 return
             }
             
-            guard let partKey = splitPartsLevels.keys.first(where: { $0.id == partId }) else {
-                return
+            if device?.leftPart.id == partId {
+                device?.leftPart.level = Int(value.uint8)
+            } else if device?.rightPart?.id == partId {
+                device?.rightPart?.level = Int(value.uint8)
             }
-            
-            splitPartsLevels[partKey] = Int(value.uint8)
         default:
             break
         }
