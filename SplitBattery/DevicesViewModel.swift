@@ -42,15 +42,23 @@ final class DevicesViewModel: NSObject {
     
     override init() {
         super.init()
-        self.centralManager = CBCentralManager(delegate: self, queue: .main)
+        self.centralManager = CBCentralManager(delegate: self, queue: nil)
     }
     
     func getConnectedDevices() {
         connectedDevices = centralManager.retrieveConnectedPeripherals(withServices: [batteryServiceCBUUID])
+        
+        if let peripheralUuid = UserDefaults.standard.object(forKey: "selected_peripheral") as? String,
+           let savedPeripheral = connectedDevices.first(where: { $0.identifier.uuidString == peripheralUuid }) {
+            self.peripheral = savedPeripheral
+            self.peripheral?.delegate = self
+            centralManager.connect(savedPeripheral)
+        }
     }
     
     func selectDevice(_ peripheral: CBPeripheral) {
         self.device = nil
+        UserDefaults.standard.set(peripheral.identifier.uuidString, forKey: "selected_peripheral")
         
         self.peripheral = peripheral
         self.peripheral?.delegate = self
