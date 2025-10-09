@@ -49,9 +49,6 @@ struct ContentView: View {
                 )
             }
         }
-        .onAppear {
-            viewModel.getConnectedDevices()
-        }
     }
 }
 

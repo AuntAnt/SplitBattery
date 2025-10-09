@@ -11,6 +11,7 @@ import CoreBluetooth
 final class DevicesViewModel: NSObject {
     
     var connectedDevices: [CBPeripheral] = []
+    
     var batteryLevel: String {
         get {
             if peripheral == nil {
@@ -21,20 +22,18 @@ final class DevicesViewModel: NSObject {
                 return "Waiting..."
             }
             
-            if let left = device.leftPart.level, let right = device.rightPart?.level {
-                return "L: \(left)% | R: \(right)%"
-            } else if let left = device.leftPart.level {
-                return "\(left)%"
-            } else {
-                return "Disconnected"
-            }
+            let left = device.leftPart.level.map({ "\($0.description)%" }) ?? "?"
+            let right = device.rightPart?.level.map({ "\($0.description)%" }) ?? "?"
+            
+            return "L: \(left) | R: \(right)"
         }
     }
     
-    var device: Device?
+    private var device: Device?
     
     private let batteryServiceCBUUID = CBUUID(string: "0x180F")
     private let batteryLevelCharacteristicCBUUID = CBUUID(string: "0x2A19")
+    private let savedDeviceKey = "selected_peripheral"
     
     private var peripheral: CBPeripheral?
     
@@ -48,7 +47,7 @@ final class DevicesViewModel: NSObject {
     func getConnectedDevices() {
         connectedDevices = centralManager.retrieveConnectedPeripherals(withServices: [batteryServiceCBUUID])
         
-        if let peripheralUuid = UserDefaults.standard.object(forKey: "selected_peripheral") as? String,
+        if let peripheralUuid = UserDefaults.standard.object(forKey: savedDeviceKey) as? String,
            let savedPeripheral = connectedDevices.first(where: { $0.identifier.uuidString == peripheralUuid }) {
             self.peripheral = savedPeripheral
             self.peripheral?.delegate = self
@@ -58,7 +57,7 @@ final class DevicesViewModel: NSObject {
     
     func selectDevice(_ peripheral: CBPeripheral) {
         self.device = nil
-        UserDefaults.standard.set(peripheral.identifier.uuidString, forKey: "selected_peripheral")
+        UserDefaults.standard.set(peripheral.identifier.uuidString, forKey: savedDeviceKey)
         
         self.peripheral = peripheral
         self.peripheral?.delegate = self
@@ -78,6 +77,8 @@ extension DevicesViewModel: CBCentralManagerDelegate {
         case .poweredOn:
             if let peripheral {
                 central.connect(peripheral)
+            } else {
+                getConnectedDevices()
             }
         default:
             return
@@ -161,14 +162,12 @@ extension DevicesViewModel: CBPeripheralDelegate {
         
         switch characteristic.uuid {
         case batteryLevelCharacteristicCBUUID:
-            guard let value = characteristic.value else {
-                return
-            }
+            let value = characteristic.value?.first.map(Int.init)
             
             if device?.leftPart.id == partId {
-                device?.leftPart.level = Int(value.uint8)
+                device?.leftPart.level = value
             } else if device?.rightPart?.id == partId {
-                device?.rightPart?.level = Int(value.uint8)
+                device?.rightPart?.level = value
             }
         default:
             break
